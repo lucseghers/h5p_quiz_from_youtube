@@ -6,10 +6,15 @@ import uuid
 import tempfile
 from pathlib import Path
 from zipfile import ZipFile
+from urllib.parse import urlparse, parse_qs # NODIG voor het parsen van de YouTube URL
 
 import streamlit as st
 from openai import OpenAI
-import yt_dlp
+# import yt_dlp # DEZE is nu NIET meer nodig voor transcriptie
+
+# NIEUWE IMPORT: API om ondertitels op te halen
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+
 
 
 # ---------- Helper: OpenAI client ----------
@@ -17,70 +22,48 @@ def get_openai_client(api_key: str) -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
-# ---------- YouTube audio downloaden (yt-dlp) ----------
-from pathlib import Path
-import os
-import yt_dlp
-from yt_dlp.utils import DownloadError
+# ---------- OUDE FUNCTIES (VERWIJDERD/VERVANGEN) ----------
 
-MAX_AUDIO_BYTES = 24 * 1024 * 1024  # ~24 MB, iets onder de limiet
+# De functies 'download_youtube_audio' en 'transcribe_audio_to_text' 
+# zijn hieronder vervangen door 'get_transcript_from_youtube'.
 
-def download_youtube_audio(url: str, tmp_dir: Path) -> Path:
+# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API ----------
+# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API (COMPLETE VERSIE) ----------
+def get_transcript_from_youtube(url: str) -> str:
     """
-    Downloadt de audio van een YouTube-video als webm (opus) of ander
-    audioformaat dat klein genoeg is voor de OpenAI speech-API.
+    Haalt de transcriptie direct op van YouTube op basis van de URL, 
+    zonder de audio te downloaden of Whisper te gebruiken.
+    Retourneert de volledige tekst als één string.
     """
-    out_dir = tmp_dir / "audio"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Probeer eerst webm-audio (meestal klein, goed ondersteund)
-    ydl_opts = {
-        "format": "bestaudio[ext=webm]/bestaudio/best",
-        "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
-        "noplaylist": True,
-        "quiet": True,
-    }
-
+    # Haal de video ID uit de URL
+    # Dit vereist de import: from urllib.parse import urlparse, parse_qs
+    query = urlparse(url).query
+    
+    if 'v' not in parse_qs(query):
+        raise ValueError("Ongeldige YouTube URL: 'v' parameter (video ID) ontbreekt.")
+        
+    video_id = parse_qs(query)['v'][0]
+    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-    except DownloadError as e:
-        raise RuntimeError(
-            "YouTube weigert het downloaden van deze video. "
-            "Dit gebeurt soms bij video's met rechtenrestricties. "
-            "Probeer een andere video."
-        ) from e
-
-    audio_file = Path(filename)
-
-    # Grootte checken (te grote bestanden weigeren we netjes)
-    size = audio_file.stat().st_size
-    if size > MAX_AUDIO_BYTES:
-        raise RuntimeError(
-            f"De audio is te groot voor de speech-API ({size/1024/1024:.1f} MB). "
-            "Kies een kortere video of knip de audio eerst bij."
+        # 1. Probeer de transcriptie op te halen
+        transcript_list = YouTubeTranscriptApi.get_transcript(
+            video_id, 
+            languages=['nl', 'en'] # Lijst van voorkeurstalen
         )
-
-    return audio_file
-
-
-# ---------- Audio -> tekst (Whisper via OpenAI) ----------
-def transcribe_audio_to_text(audio_path: Path, client: OpenAI) -> str:
-    """
-    Stuurt audio naar OpenAI (Whisper) en geeft de transcriptie als tekst terug.
-    Taal wordt automatisch gedetecteerd.
-    """
-    with open(audio_path, "rb") as f:
-        transcript = client.audio.transcriptions.create(
-            model="gpt-4o-mini-transcribe",  # of "gpt-4o-transcribe"
-            file=f,
-        )
-    text = transcript.text
-    return text
+        
+        # 2. Voeg alle stukjes tekst samen tot één lange string (dit was de ontbrekende stap)
+        full_text = ' '.join([item['text'] for item in transcript_list])
+        return full_text
+    
+    except TranscriptsDisabled:
+        # Vang de fout op als de video geen ondertitels heeft
+        raise RuntimeError(f"Video {video_id} heeft geen beschikbare ondertitels (transcriptie). ")
+    except Exception as e:
+        # Vang andere mogelijke fouten op (bv. ongeldige ID, netwerkfout)
+        raise RuntimeError(f"Kon transcriptie voor video {video_id} niet ophalen. Fout: {type(e).__name__}: {e}")
 
 
-# ---------- Vragen genereren met gekozen taal ----------
+# ---------- Vragen genereren met gekozen taal (ONGEWIJZIGD) ----------
 def generate_mc_from_text(
     text: str,
     n_questions: int = 5,
@@ -90,12 +73,6 @@ def generate_mc_from_text(
     """
     Genereert n_questions meerkeuzevragen op basis van de aangeleverde tekst.
     question_language: taal waarin vragen en antwoorden moeten staan.
-    Retourneert een lijst met dicts:
-      {
-        "question": "vraagtekst",
-        "answers": ["A", "B", "C", "D"],
-        "correct_index": 0
-      }
     """
     prompt = f"""
 Je krijgt de uitgeschreven tekst van een video (transcript van de audio).
@@ -147,7 +124,7 @@ Tekst van de video:
     return data.get("questions", [])
 
 
-# ---------- H5P helpers ----------
+# ---------- H5P helpers (ONGEWIJZIGD) ----------
 def build_questions_from_mc(mc_questions, template_content):
     """
     Zet je eigen mc_questions om naar H5P.MultiChoice vragen,
@@ -218,19 +195,12 @@ def create_h5p_from_template(template_h5p_path, output_h5p_path, mc_questions):
                 zout.writestr(item, data)
 
 
-# ---------- Streamlit UI ----------
+# ---------- Streamlit UI (AANGEPAST) ----------
 st.set_page_config(page_title="YouTube → H5P-quiz", page_icon="🎬")
 
 st.title("🎬 YouTube → 📚 H5P meerkeuzequiz")
 
 # Logo bovenaan tonen (logo.png in dezelfde map als dit script)
-#from pathlib import Path
-#import streamlit as st
-
-#LOGO_PATH = Path("logo.png")
-#if LOGO_PATH.exists():
-#    st.image(str(LOGO_PATH), width=400)  # pas breedte aan naar wens
-
 logo_path = "logo.png"
 if os.path.exists(logo_path):
     st.image(logo_path, width=400)
@@ -241,7 +211,7 @@ else:
 st.markdown(
     """
 1. Vul je OpenAI API-sleutel in  
-2. Plak een YouTube-URL  
+2. Plak een YouTube-URL (moet ondertitels hebben!) ⚠️
 3. Kies aantal vragen en taal  
 4. Upload (of gebruik) een H5P-template  
 5. Genereer en download de nieuwe H5P-quiz
@@ -296,20 +266,20 @@ if st.button("🚀 Genereer H5P-quiz"):
         try:
             client = get_openai_client(api_key)
 
+            # De tijdelijke map is nog steeds nodig voor het opslaan van de H5P output
             with tempfile.TemporaryDirectory() as tmpdir_str:
                 tmpdir = Path(tmpdir_str)
 
                 with st.status("Bezig met verwerken...", expanded=True) as status:
-                    status.write("1️⃣ Audio downloaden van YouTube...")
-                    audio_path = download_youtube_audio(youtube_url, tmpdir)
-                    status.write(f"✅ Audio gedownload: {audio_path.name}")
-
-                    status.write("2️⃣ Audio transcriberen naar tekst...")
-                    full_text = transcribe_audio_to_text(audio_path, client)
+                    
+                    # 1️⃣ Vroeger: Downloaden van audio. NU: Transcriptie via API.
+                    status.write("1️⃣ Transcriptie ophalen van YouTube via API...")
+                    full_text = get_transcript_from_youtube(youtube_url)
                     status.write(f"✅ Transcript klaar (lengte: {len(full_text)} tekens)")
 
+                    # 2️⃣ Vroeger: Transcriberen. NU: Direct Vragen Genereren (Stap 2/3 gecombineerd)
                     status.write(
-                        f"3️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
+                        f"2️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
                     )
                     mc_questions = generate_mc_from_text(
                         full_text,
@@ -321,7 +291,7 @@ if st.button("🚀 Genereer H5P-quiz"):
                         raise RuntimeError("Geen vragen teruggekregen van het model.")
                     status.write(f"✅ {len(mc_questions)} vragen ontvangen.")
 
-                    status.write("4️⃣ H5P-bestand opbouwen...")
+                    status.write("3️⃣ H5P-bestand opbouwen...")
 
                     # Template opslaan (als upload) of standaardbestand gebruiken
                     if uploaded_template is not None:
