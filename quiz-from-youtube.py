@@ -18,26 +18,51 @@ def get_openai_client(api_key: str) -> OpenAI:
 
 
 # ---------- YouTube audio downloaden (yt-dlp) ----------
+from pathlib import Path
+import os
+import yt_dlp
+from yt_dlp.utils import DownloadError
+
+MAX_AUDIO_BYTES = 24 * 1024 * 1024  # ~24 MB, iets onder de limiet
+
 def download_youtube_audio(url: str, tmp_dir: Path) -> Path:
     """
-    Downloadt de audio van een YouTube-video als .webm (of vergelijkbaar).
-    Retourneert het pad naar het audiobestand.
+    Downloadt de audio van een YouTube-video als webm (opus) of ander
+    audioformaat dat klein genoeg is voor de OpenAI speech-API.
     """
     out_dir = tmp_dir / "audio"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Probeer eerst webm-audio (meestal klein, goed ondersteund)
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+    except DownloadError as e:
+        raise RuntimeError(
+            "YouTube weigert het downloaden van deze video. "
+            "Dit gebeurt soms bij video's met rechtenrestricties. "
+            "Probeer een andere video."
+        ) from e
 
-    return Path(filename)
+    audio_file = Path(filename)
+
+    # Grootte checken (te grote bestanden weigeren we netjes)
+    size = audio_file.stat().st_size
+    if size > MAX_AUDIO_BYTES:
+        raise RuntimeError(
+            f"De audio is te groot voor de speech-API ({size/1024/1024:.1f} MB). "
+            "Kies een kortere video of knip de audio eerst bij."
+        )
+
+    return audio_file
 
 
 # ---------- Audio -> tekst (Whisper via OpenAI) ----------
@@ -197,6 +222,21 @@ def create_h5p_from_template(template_h5p_path, output_h5p_path, mc_questions):
 st.set_page_config(page_title="YouTube → H5P-quiz", page_icon="🎬")
 
 st.title("🎬 YouTube → 📚 H5P meerkeuzequiz")
+
+# Logo bovenaan tonen (logo.png in dezelfde map als dit script)
+#from pathlib import Path
+#import streamlit as st
+
+#LOGO_PATH = Path("logo.png")
+#if LOGO_PATH.exists():
+#    st.image(str(LOGO_PATH), width=400)  # pas breedte aan naar wens
+
+logo_path = "logo.png"
+if os.path.exists(logo_path):
+    st.image(logo_path, width=400)
+else:
+    st.warning(f"Logo '{logo_path}' niet gevonden.")
+
 
 st.markdown(
     """
