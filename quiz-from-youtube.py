@@ -13,7 +13,9 @@ from openai import OpenAI
 # import yt_dlp # DEZE is nu NIET meer nodig voor transcriptie
 
 # NIEUWE IMPORT: API om ondertitels op te halen
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+#from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+import youtube_transcript_api
+from youtube_transcript_api import TranscriptsDisabled # Alleen de exceptie importeer je
 
 
 # ---------- Helper: OpenAI client ----------
@@ -45,7 +47,8 @@ def get_transcript_from_youtube(url: str) -> str:
     
     try:
         # 1. Probeer de transcriptie op te halen
-        transcript_list = YouTubeTranscriptApi.get_transcript(
+        #transcript_list = YouTubeTranscriptApi.get_transcript(
+        transcript_list = youtube_transcript_api.get_transcript(
             video_id, 
             languages=['nl', 'en'] # Lijst van voorkeurstalen
         )
