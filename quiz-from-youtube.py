@@ -13,9 +13,6 @@ from openai import OpenAI
 # import yt_dlp # DEZE is nu NIET meer nodig voor transcriptie
 
 # NIEUWE IMPORT: API om ondertitels op te halen
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
-#import youtube_transcript_api
-#from youtube_transcript_api import TranscriptsDisabled # Alleen de exceptie importeer je
 
 
 # ---------- Helper: OpenAI client ----------
@@ -28,16 +25,16 @@ def get_openai_client(api_key: str) -> OpenAI:
 # De functies 'download_youtube_audio' en 'transcribe_audio_to_text' 
 # zijn hieronder vervangen door 'get_transcript_from_youtube'.
 
-# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API ----------
-# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API (COMPLETE VERSIE) ----------
+# NIEUWE IMPORT: Gebruik de oude klassen
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+
+# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API (Versie 1.2.3) ----------
 def get_transcript_from_youtube(url: str) -> str:
     """
-    Haalt de transcriptie direct op van YouTube op basis van de URL, 
-    zonder de audio te downloaden of Whisper te gebruiken.
-    Retourneert de volledige tekst als één string.
+    Haalt de transcriptie direct op via de oude syntaxis (v1.2.3)
     """
     # Haal de video ID uit de URL
-    # Dit vereist de import: from urllib.parse import urlparse, parse_qs
+    from urllib.parse import urlparse, parse_qs
     query = urlparse(url).query
     
     if 'v' not in parse_qs(query):
@@ -46,22 +43,23 @@ def get_transcript_from_youtube(url: str) -> str:
     video_id = parse_qs(query)['v'][0]
     
     try:
-        # 1. Probeer de transcriptie op te halen
-        transcript_list = YouTubeTranscriptApi.get_transcript(
-        #transcript_list = youtube_transcript_api.get_transcript(
+        # Dit is de OUDE syntaxis: Je vraagt het object aan, niet de transcriptie direct.
+        transcript_list = YouTubeTranscriptApi.get(
             video_id, 
-            languages=['nl', 'en'] # Lijst van voorkeurstalen
+            languages=['nl', 'en'] 
         )
         
-        # 2. Voeg alle stukjes tekst samen tot één lange string (dit was de ontbrekende stap)
-        full_text = ' '.join([item['text'] for item in transcript_list])
+        # Nu moet je de transcriptie ophalen van het object (nog steeds OUDE syntaxis)
+        transcript = transcript_list[0].fetch() # Haal de eerste (beste) transcriptie op
+
+        # Voeg alle stukjes tekst samen tot één lange string (transcript is een lijst van dicts)
+        full_text = ' '.join([item['text'] for item in transcript])
         return full_text
     
-    except TranscriptsDisabled:
+    except (TranscriptsDisabled, NoTranscriptFound) as e:
         # Vang de fout op als de video geen ondertitels heeft
-        raise RuntimeError(f"Video {video_id} heeft geen beschikbare ondertitels (transcriptie). ")
+        raise RuntimeError(f"Video {video_id} heeft geen beschikbare ondertitels (transcriptie). Fout: {e}")
     except Exception as e:
-        # Vang andere mogelijke fouten op (bv. ongeldige ID, netwerkfout)
         raise RuntimeError(f"Kon transcriptie voor video {video_id} niet ophalen. Fout: {type(e).__name__}: {e}")
 
 
