@@ -1,3 +1,4 @@
 streamlit
 openai
-youtube-transcript-api==3.0.0  # Dwingt een versie met de functie get_transcript
+youtube-transcript-api==2.1.0  # We gebruiken nu een bewezen 2.x versie
+
