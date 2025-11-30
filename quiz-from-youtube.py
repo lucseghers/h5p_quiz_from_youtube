@@ -65,6 +65,7 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     return response.choices[0].message.content
 
 # ---------- Vragen genereren met gekozen taal (ONGEWIJZIGD) ----------
+# ---------- Vragen genereren met gekozen taal (AANGEPAST) ----------
 def generate_mc_from_text(
     text: str,
     n_questions: int = 5,
@@ -75,9 +76,20 @@ def generate_mc_from_text(
     Genereert n_questions meerkeuzevragen op basis van de aangeleverde tekst.
     question_language: taal waarin vragen en antwoorden moeten staan.
     """
+    
+    # CRUCIALE CHECK: Als de tekst te kort is, vragen we de AI om een fout te melden
+    if len(text) < 500:
+        error_msg = f"De video-analyse is mislukt. De ontvangen tekst is te kort om betrouwbare vragen te genereren. Lengte: {len(text)} tekens. De AI kon de video-inhoud niet uitlezen."
+    else:
+        error_msg = "" # Geen fout als de tekst lang genoeg is
+
     prompt = f"""
-Je krijgt de uitgeschreven tekst van een video (transcript van de audio).
-Maak {n_questions} meerkeuzevragen in het {question_language} over de inhoud.
+Je krijgt de uitgeschreven tekst van een video (transcript of beschrijving).
+{error_msg}
+
+INSTRUCTIES:
+1. Als de foutmelding '{error_msg}' in dit bericht staat, dan moet de vraag '{question_language}: De video kon niet worden geanalyseerd' worden.
+2. Anders: Maak {n_questions} meerkeuzevragen in het {question_language} over de inhoud.
 
 Regels:
 - Doelgroep: volwassen cursisten.
@@ -85,11 +97,13 @@ Regels:
   - 1 duidelijke vraagzin.
   - 4 antwoordmogelijkheden.
   - Slechts één juist antwoord.
-- Maak inhoudelijke vragen (geen triviale details of losse woordjes).
 - Schrijf ALLES in het {question_language} (zowel vragen als antwoorden).
 
 Geef ALLEEN geldig JSON terug in dit formaat:
+... (rest van de JSON structuur blijft hetzelfde)
+"""
 
+    # ... (rest van de functie, inclusief de response = client.chat.completions.create(...) blijft hetzelfde)
 {{
   "questions": [
     {{
@@ -281,8 +295,8 @@ if st.button("🚀 Genereer H5P-quiz"):
 
                 with st.status("Bezig met verwerken...", expanded=True) as status:
                     
-                    # 1️⃣ Inhoud analyseren via GPT-4o-mini
-                    status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o-mini...")
+                    # 1️⃣ Inhoud analyseren via GPT-4o
+                    status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o...")
                     full_text = get_transcript_from_youtube(youtube_url, client)
                     status.write(f"✅ Transcript/Inhoud klaar (lengte: {len(full_text)} tekens)")
 
