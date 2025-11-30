@@ -212,7 +212,7 @@ st.markdown(
 
 # API-key: Gebruik st.secrets, met fallback naar invoerveld
 try:
-    api_key = st.secrets["openai_api_key"]
+    api_key = st.secrets["OPENAI_API_KEY"]
     st.info("OpenAI API-sleutel is geladen vanuit Streamlit secrets. ✅")
 except (KeyError, AttributeError):
     # Fallback: Als de key niet in secrets staat, vraag er dan om
