@@ -28,23 +28,32 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     Gebruikt de GPT-4o API's multimodale capaciteiten om de
     inhoud van de YouTube-video-URL te analyseren en de transcriptie/inhoud terug te geven.
     """
+# OUDE PROMPT: (start van de prompt)
+# prompt = f"""
+# Analiseer de inhoud van deze YouTube-video...
+# """
+
+# NIEUWE PROMPT (Aangepast):
     prompt = f"""
-    Analyseer de inhoud van deze YouTube-video. 
-    Het doel is om meerkeuzevragen te genereren. 
-    Geef de volledige, uitgeschreven tekst (transcript) van de video terug, indien mogelijk, 
-    of een zeer gedetailleerde samenvatting van de gehele inhoud. 
-    Concentreer je op de feitelijke en educatieve inhoud. 
+    Je taak is om de volledige, uitgeschreven tekst (transcript) van de YouTube-video te leveren.
+    Voer de URL-analyse nauwkeurig uit. Als de analyse faalt, geef dan de exacte foutmelding door 
+    zonder deze te vertalen of aan te passen.
+    
+    Als de analyse lukt, geef ALLEEN de volledige tekst van de video terug.
     De URL is: {url}
     """
     
     response = client.chat.completions.create(
-        model="gpt-4o", # Meest kosteneffectieve en snelle multimodale model
+        model="gpt-4o", # Gebruik NU het VOLLEDIGE GPT-4o model voor betere URL-lezing!
         messages=[
+            {
+                "role": "system",
+                "content": "Je bent een gespecialiseerde video-analist. Je leest de YouTube-URL en extraheert het transcript. Je moet extreem nauwkeurig zijn.",
+            },
             {
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    # Geef de URL door aan de AI (dit is hoe GPT-4o een URL leest)
                     {"type": "text", "text": url} 
                 ]
             }
