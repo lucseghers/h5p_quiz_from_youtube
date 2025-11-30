@@ -279,8 +279,8 @@ if st.button("🚀 Genereer H5P-quiz"):
                     status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o...")
                     full_text = get_transcript_from_youtube(youtube_url, client)
                     status.write(f"✅ Transcript/Inhoud klaar (lengte: {len(full_text)} tekens)")
-
-                    # CRUCIALE FOUTAFHANDELING: Stop als de tekst te kort is (mislukte analyse)
+         
+         # CRUCIALE FOUTAFHANDELING: Stop als de tekst te kort is (mislukte analyse)
                     if len(full_text) < 500: # Gebruik een drempel van 500 tekens
                         status.update(label="Analyse Mislukt ❌", state="error")
                         st.error(f"""
@@ -292,12 +292,12 @@ if st.button("🚀 Genereer H5P-quiz"):
                         
                         Probeer een andere video, of gebruik een video met ondertitels.
                         """)
-                        # Gebruik return om de rest van de try/except blok over te slaan
-                        return
+                        
+                        # DE OPLOSSING: Gebruik st.stop() in plaats van return
+                        st.stop() # Lijn 296 is hier nu correct
                         
                     # 2️⃣ Vragen Genereren
-                    status.write(
-                        f"2️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
+                    status.write(                        f"2️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
                     )
                     mc_questions = generate_mc_from_text(
                         full_text,
