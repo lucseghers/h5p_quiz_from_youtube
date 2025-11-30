@@ -26,7 +26,6 @@ def get_openai_client(api_key: str) -> OpenAI:
 def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
     Gebruikt de GPT-4o API om de YouTube-URL te analyseren.
-    We forceren de AI om een transcript of een duidelijke foutmelding terug te geven.
     """
     prompt = f"""
     Je taak is om de volledige, uitgeschreven tekst (transcript) van de YouTube-video te leveren.
@@ -67,22 +66,12 @@ def generate_mc_from_text(
 ):
     """
     Genereert n_questions meerkeuzevragen op basis van de aangeleverde tekst.
-    Inclusief foutafhandeling voor te korte/mislukte transcripties.
+    Gebruikt GPT-4o voor maximale JSON-betrouwbaarheid.
     """
     
-    # CRUCIALE CHECK: Als de tekst te kort is (mislukte analyse), creëer een duidelijke foutmelding in de prompt.
-    if len(text) < 500: # Gebruik een drempel van 500 tekens om mislukte analyses te vangen
-        error_msg = f"De video-analyse is mislukt. De ontvangen tekst is te kort om betrouwbare vragen te genereren. Lengte: {len(text)} tekens. De AI kon de video-inhoud niet uitlezen. De ontvangen tekst was: \"{text[:50]}\""
-    else:
-        error_msg = "" # Geen fout als de tekst lang genoeg is
-
     prompt = f"""
 Je krijgt de uitgeschreven tekst van een video (transcript of beschrijving).
-{error_msg}
-
-INSTRUCTIES:
-1. Als de foutmelding '{error_msg}' in dit bericht staat, dan moet de vraagtekst van de EERSTE vraag exact luiden: 'Kan de video-inhoud worden geanalyseerd?' De juiste antwoordoptie moet 'Nee, de analyse is mislukt vanwege te korte invoer ({len(text)} tekens).' zijn.
-2. Anders: Maak {n_questions} meerkeuzevragen in het {question_language} over de inhoud.
+Maak {n_questions} meerkeuzevragen in het {question_language} over de inhoud.
 
 Regels:
 - Doelgroep: volwassen cursisten.
@@ -115,7 +104,7 @@ Tekst van de video:
         messages=[
             {
                 "role": "system",
-                "content": "Je maakt didactische meerkeuzevragen en geeft geldig JSON terug. Je bent getraind om altijd geldige JSON terug te geven, zelfs bij foutieve invoer.",
+                "content": "Je maakt didactische meerkeuzevragen en geeft geldig JSON terug. Je bent getraind om altijd geldige JSON terug te geven.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -291,6 +280,21 @@ if st.button("🚀 Genereer H5P-quiz"):
                     full_text = get_transcript_from_youtube(youtube_url, client)
                     status.write(f"✅ Transcript/Inhoud klaar (lengte: {len(full_text)} tekens)")
 
+                    # CRUCIALE FOUTAFHANDELING: Stop als de tekst te kort is (mislukte analyse)
+                    if len(full_text) < 500: # Gebruik een drempel van 500 tekens
+                        status.update(label="Analyse Mislukt ❌", state="error")
+                        st.error(f"""
+                        De video-analyse is mislukt! De AI kon de video-inhoud niet uitlezen.
+                        Dit komt meestal door YouTube-blokkades op de server.
+                        
+                        **Ontvangen AI-respons (slechts {len(full_text)} tekens):**
+                        > {full_text}
+                        
+                        Probeer een andere video, of gebruik een video met ondertitels.
+                        """)
+                        # Gebruik return om de rest van de try/except blok over te slaan
+                        return
+                        
                     # 2️⃣ Vragen Genereren
                     status.write(
                         f"2️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
@@ -302,7 +306,8 @@ if st.button("🚀 Genereer H5P-quiz"):
                         client=client,
                     )
                     if not mc_questions:
-                        raise RuntimeError("Geen vragen teruggekregen van het model.")
+                        # Dit wordt alleen geactiveerd als de AI geldige JSON teruggeeft, maar de vragenlijst leeg is.
+                        raise RuntimeError("Geen vragen teruggekregen van het model (de vragenlijst is leeg).")
                     status.write(f"✅ {len(mc_questions)} vragen ontvangen.")
 
                     # 3️⃣ H5P opbouwen
