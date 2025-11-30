@@ -12,7 +12,7 @@ import streamlit as st
 from openai import OpenAI
 
 
-# ---------- Helper: OpenAI client ----------
+# ---------- Helper: OpenAI client (Gebruikt Caching voor snelheid) ----------
 @st.cache_resource 
 def get_openai_client(api_key: str) -> OpenAI:
     """
@@ -21,19 +21,13 @@ def get_openai_client(api_key: str) -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
-# ---------- NIEUWE FUNCTIE: Transcriptie via chatgpt ----------
+# ---------- NIEUWE FUNCTIE: Transcriptie via GPT-4o Multimodal ----------
 
 def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
-    Gebruikt de GPT-4o API's multimodale capaciteiten om de
-    inhoud van de YouTube-video-URL te analyseren en de transcriptie/inhoud terug te geven.
+    Gebruikt de GPT-4o API om de YouTube-URL te analyseren.
+    We forceren de AI om een transcript of een duidelijke foutmelding terug te geven.
     """
-# OUDE PROMPT: (start van de prompt)
-# prompt = f"""
-# Analiseer de inhoud van deze YouTube-video...
-# """
-
-# NIEUWE PROMPT (Aangepast):
     prompt = f"""
     Je taak is om de volledige, uitgeschreven tekst (transcript) van de YouTube-video te leveren.
     Voer de URL-analyse nauwkeurig uit. Als de analyse faalt, geef dan de exacte foutmelding door 
@@ -44,7 +38,7 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
     
     response = client.chat.completions.create(
-        model="gpt-4o", # Gebruik NU het VOLLEDIGE GPT-4o model voor betere URL-lezing!
+        model="gpt-4o", # Model geüpgraded voor betere URL-analyse
         messages=[
             {
                 "role": "system",
@@ -64,8 +58,7 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     # De AI geeft nu de transcriptie/samenvatting als tekst terug
     return response.choices[0].message.content
 
-# ---------- Vragen genereren met gekozen taal (ONGEWIJZIGD) ----------
-# ---------- Vragen genereren met gekozen taal (AANGEPAST) ----------
+# ---------- Vragen genereren met gekozen taal (Laatste correctie) ----------
 def generate_mc_from_text(
     text: str,
     n_questions: int = 5,
@@ -74,12 +67,12 @@ def generate_mc_from_text(
 ):
     """
     Genereert n_questions meerkeuzevragen op basis van de aangeleverde tekst.
-    question_language: taal waarin vragen en antwoorden moeten staan.
+    Inclusief foutafhandeling voor te korte/mislukte transcripties.
     """
     
-    # CRUCIALE CHECK: Als de tekst te kort is, vragen we de AI om een fout te melden
-    if len(text) < 500:
-        error_msg = f"De video-analyse is mislukt. De ontvangen tekst is te kort om betrouwbare vragen te genereren. Lengte: {len(text)} tekens. De AI kon de video-inhoud niet uitlezen."
+    # CRUCIALE CHECK: Als de tekst te kort is (mislukte analyse), creëer een duidelijke foutmelding in de prompt.
+    if len(text) < 500: # Gebruik een drempel van 500 tekens om mislukte analyses te vangen
+        error_msg = f"De video-analyse is mislukt. De ontvangen tekst is te kort om betrouwbare vragen te genereren. Lengte: {len(text)} tekens. De AI kon de video-inhoud niet uitlezen. De ontvangen tekst was: \"{text[:50]}\""
     else:
         error_msg = "" # Geen fout als de tekst lang genoeg is
 
@@ -88,7 +81,7 @@ Je krijgt de uitgeschreven tekst van een video (transcript of beschrijving).
 {error_msg}
 
 INSTRUCTIES:
-1. Als de foutmelding '{error_msg}' in dit bericht staat, dan moet de vraag '{question_language}: De video kon niet worden geanalyseerd' worden.
+1. Als de foutmelding '{error_msg}' in dit bericht staat, dan moet de vraagtekst van de EERSTE vraag exact luiden: 'Kan de video-inhoud worden geanalyseerd?' De juiste antwoordoptie moet 'Nee, de analyse is mislukt vanwege te korte invoer ({len(text)} tekens).' zijn.
 2. Anders: Maak {n_questions} meerkeuzevragen in het {question_language} over de inhoud.
 
 Regels:
@@ -97,13 +90,11 @@ Regels:
   - 1 duidelijke vraagzin.
   - 4 antwoordmogelijkheden.
   - Slechts één juist antwoord.
+- Maak inhoudelijke vragen (geen triviale details of losse woordjes).
 - Schrijf ALLES in het {question_language} (zowel vragen als antwoorden).
 
 Geef ALLEEN geldig JSON terug in dit formaat:
-... (rest van de JSON structuur blijft hetzelfde)
-"""
 
-    # ... (rest van de functie, inclusief de response = client.chat.completions.create(...) blijft hetzelfde)
 {{
   "questions": [
     {{
@@ -119,12 +110,12 @@ Tekst van de video:
 """
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4o", # Model geüpgraded voor betere JSON-betrouwbaarheid
         response_format={"type": "json_object"},
         messages=[
             {
                 "role": "system",
-                "content": "Je maakt didactische meerkeuzevragen en geeft geldig JSON terug.",
+                "content": "Je maakt didactische meerkeuzevragen en geeft geldig JSON terug. Je bent getraind om altijd geldige JSON terug te geven, zelfs bij foutieve invoer.",
             },
             {"role": "user", "content": prompt},
         ],
