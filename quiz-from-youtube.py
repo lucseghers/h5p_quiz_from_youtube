@@ -26,14 +26,15 @@ def get_openai_client(api_key: str) -> OpenAI:
 # zijn hieronder vervangen door 'get_transcript_from_youtube'.
 
 # NIEUWE IMPORT: Gebruik de oude klassen
+# NIEUWE IMPORT: De hoofdklasse YouTubeTranscriptApi en uitzonderingen
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 # ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API (Versie 1.2.3) ----------
+
 def get_transcript_from_youtube(url: str) -> str:
     """
-    Haalt de transcriptie direct op via de oude syntaxis (v1.2.3)
+    Haalt de transcriptie direct op via de OUDE syntaxis (v1.2.3)
     """
-    # Haal de video ID uit de URL
     from urllib.parse import urlparse, parse_qs
     query = urlparse(url).query
     
@@ -43,25 +44,23 @@ def get_transcript_from_youtube(url: str) -> str:
     video_id = parse_qs(query)['v'][0]
     
     try:
-        # Dit is de OUDE syntaxis: Je vraagt het object aan, niet de transcriptie direct.
+        # Dit is de enige werkende aanroep voor versie 1.2.3!
         transcript_list = YouTubeTranscriptApi.get(
             video_id, 
             languages=['nl', 'en'] 
         )
         
-        # Nu moet je de transcriptie ophalen van het object (nog steeds OUDE syntaxis)
-        transcript = transcript_list[0].fetch() # Haal de eerste (beste) transcriptie op
-
-        # Voeg alle stukjes tekst samen tot één lange string (transcript is een lijst van dicts)
+        # Nu de transcriptie fetchen van de lijst met objecten
+        transcript = transcript_list[0].fetch() # Haal de daadwerkelijke tekst op
+        
+        # Voeg alle stukjes tekst samen tot één lange string
         full_text = ' '.join([item['text'] for item in transcript])
         return full_text
     
     except (TranscriptsDisabled, NoTranscriptFound) as e:
-        # Vang de fout op als de video geen ondertitels heeft
         raise RuntimeError(f"Video {video_id} heeft geen beschikbare ondertitels (transcriptie). Fout: {e}")
     except Exception as e:
         raise RuntimeError(f"Kon transcriptie voor video {video_id} niet ophalen. Fout: {type(e).__name__}: {e}")
-
 
 # ---------- Vragen genereren met gekozen taal (ONGEWIJZIGD) ----------
 def generate_mc_from_text(
