@@ -38,7 +38,7 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
     
     response = client.chat.completions.create(
-        model="gpt-4o-mini", # Meest kosteneffectieve en snelle multimodale model
+        model="gpt-4o", # Meest kosteneffectieve en snelle multimodale model
         messages=[
             {
                 "role": "user",
