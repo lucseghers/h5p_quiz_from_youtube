@@ -27,40 +27,43 @@ def get_openai_client(api_key: str) -> OpenAI:
 
 # NIEUWE IMPORT: Gebruik de oude klassen
 # NIEUWE IMPORT: De hoofdklasse YouTubeTranscriptApi en uitzonderingen
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+# from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
-# ---------- NIEUWE FUNCTIE: Transcriptie via YouTube API (Versie 1.2.3) ----------
+# ---------- NIEUWE FUNCTIE: Transcriptie via chatgpt  ----------
 
-def get_transcript_from_youtube(url: str) -> str:
+
+# NIEUWE Functie: Gebruik GPT-4o om de video-inhoud te transcriberen
+def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
-    Haalt de transcriptie direct op via de OUDE syntaxis (v1.2.3)
+    Gebruikt de GPT-4o API's vision/multimodale capaciteiten om de
+    inhoud van de YouTube-video-URL te analyseren en de transcriptie/inhoud terug te geven.
     """
-    from urllib.parse import urlparse, parse_qs
-    query = urlparse(url).query
+    prompt = f"""
+    Analyseer de inhoud van deze YouTube-video. 
+    Het doel is om meerkeuzevragen te genereren. 
+    Geef de volledige, uitgeschreven tekst (transcript) van de video terug, indien mogelijk, 
+    of een zeer gedetailleerde samenvatting van de gehele inhoud. 
+    Concentreer je op de feitelijke en educatieve inhoud. 
+    De URL is: {url}
+    """
     
-    if 'v' not in parse_qs(query):
-        raise ValueError("Ongeldige YouTube URL: 'v' parameter (video ID) ontbreekt.")
-        
-    video_id = parse_qs(query)['v'][0]
+    response = client.chat.completions.create(
+        model="gpt-4o-mini", # Gebruik gpt-4o-mini of gpt-4o
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    # Geef de URL door aan de AI (dit is hoe GPT-4o een URL leest)
+                    {"type": "text", "text": url} 
+                ]
+            }
+        ],
+        temperature=0.0
+    )
     
-    try:
-        # Dit is de enige werkende aanroep voor versie 1.2.3!
-        transcript_list = YouTubeTranscriptApi.get(
-            video_id, 
-            languages=['nl', 'en'] 
-        )
-        
-        # Nu de transcriptie fetchen van de lijst met objecten
-        transcript = transcript_list[0].fetch() # Haal de daadwerkelijke tekst op
-        
-        # Voeg alle stukjes tekst samen tot één lange string
-        full_text = ' '.join([item['text'] for item in transcript])
-        return full_text
-    
-    except (TranscriptsDisabled, NoTranscriptFound) as e:
-        raise RuntimeError(f"Video {video_id} heeft geen beschikbare ondertitels (transcriptie). Fout: {e}")
-    except Exception as e:
-        raise RuntimeError(f"Kon transcriptie voor video {video_id} niet ophalen. Fout: {type(e).__name__}: {e}")
+    # De AI geeft nu de transcriptie/samenvatting als tekst terug
+    return response.choices[0].message.content
 
 # ---------- Vragen genereren met gekozen taal (ONGEWIJZIGD) ----------
 def generate_mc_from_text(
@@ -272,9 +275,12 @@ if st.button("🚀 Genereer H5P-quiz"):
                 with st.status("Bezig met verwerken...", expanded=True) as status:
                     
                     # 1️⃣ Vroeger: Downloaden van audio. NU: Transcriptie via API.
-                    status.write("1️⃣ Transcriptie ophalen van YouTube via API...")
-                    full_text = get_transcript_from_youtube(youtube_url)
-                    status.write(f"✅ Transcript klaar (lengte: {len(full_text)} tekens)")
+                             # OUDE AANROEP: full_text = get_transcript_from_youtube(youtube_url)
+
+                    # NIEUWE AANROEP (in het st.status blok):
+                    status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o...")
+                    full_text = get_transcript_from_youtube(youtube_url, client)
+                    status.write(f"✅ Transcript/Inhoud klaar (lengte: {len(full_text)} tekens)")
 
                     # 2️⃣ Vroeger: Transcriberen. NU: Direct Vragen Genereren (Stap 2/3 gecombineerd)
                     status.write(
