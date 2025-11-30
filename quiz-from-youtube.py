@@ -1,4 +1,4 @@
-# app.py
+# quiz-from-youtube.py
 import os
 import json
 import copy
@@ -6,36 +6,26 @@ import uuid
 import tempfile
 from pathlib import Path
 from zipfile import ZipFile
-from urllib.parse import urlparse, parse_qs # NODIG voor het parsen van de YouTube URL
+from urllib.parse import urlparse, parse_qs 
 
 import streamlit as st
 from openai import OpenAI
-# import yt_dlp # DEZE is nu NIET meer nodig voor transcriptie
-
-# NIEUWE IMPORT: API om ondertitels op te halen
 
 
 # ---------- Helper: OpenAI client ----------
+@st.cache_resource 
 def get_openai_client(api_key: str) -> OpenAI:
+    """
+    Cache de OpenAI client, zodat deze niet bij elke Streamlit herlading opnieuw wordt gemaakt.
+    """
     return OpenAI(api_key=api_key)
 
 
-# ---------- OUDE FUNCTIES (VERWIJDERD/VERVANGEN) ----------
+# ---------- NIEUWE FUNCTIE: Transcriptie via chatgpt ----------
 
-# De functies 'download_youtube_audio' en 'transcribe_audio_to_text' 
-# zijn hieronder vervangen door 'get_transcript_from_youtube'.
-
-# NIEUWE IMPORT: Gebruik de oude klassen
-# NIEUWE IMPORT: De hoofdklasse YouTubeTranscriptApi en uitzonderingen
-# from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-
-# ---------- NIEUWE FUNCTIE: Transcriptie via chatgpt  ----------
-
-
-# NIEUWE Functie: Gebruik GPT-4o om de video-inhoud te transcriberen
 def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
-    Gebruikt de GPT-4o API's vision/multimodale capaciteiten om de
+    Gebruikt de GPT-4o API's multimodale capaciteiten om de
     inhoud van de YouTube-video-URL te analyseren en de transcriptie/inhoud terug te geven.
     """
     prompt = f"""
@@ -48,7 +38,7 @@ def get_transcript_from_youtube(url: str, client: OpenAI) -> str:
     """
     
     response = client.chat.completions.create(
-        model="gpt-4o-mini", # Gebruik gpt-4o-mini of gpt-4o
+        model="gpt-4o-mini", # Meest kosteneffectieve en snelle multimodale model
         messages=[
             {
                 "role": "user",
@@ -212,21 +202,28 @@ else:
 
 st.markdown(
     """
-1. Vul je OpenAI API-sleutel in  
-2. Plak een YouTube-URL (moet ondertitels hebben!) ⚠️
+1. Controleer of je OpenAI API-sleutel correct is ingesteld in Streamlit secrets.
+2. Plak een YouTube-URL  
 3. Kies aantal vragen en taal  
 4. Upload (of gebruik) een H5P-template  
 5. Genereer en download de nieuwe H5P-quiz
 """
 )
 
-# API-key
-api_key = st.text_input(
-    "OpenAI API-sleutel",
-    type="password",
-    help="Gebruik bij voorkeur een sleutel uit een .streamlit/secrets.toml of omgevingsvariabele.",
-)
-
+# API-key: Gebruik st.secrets, met fallback naar invoerveld
+try:
+    api_key = st.secrets["openai_api_key"]
+    st.info("OpenAI API-sleutel is geladen vanuit Streamlit secrets. ✅")
+except (KeyError, AttributeError):
+    # Fallback: Als de key niet in secrets staat, vraag er dan om
+    api_key = st.text_input(
+        "OpenAI API-sleutel",
+        type="password",
+        help="OpenAI API-sleutel niet gevonden in `st.secrets`. Vul de sleutel hier handmatig in.",
+    )
+    if api_key:
+        st.warning("Handmatige sleutel ingevoerd. Let op: beter om `st.secrets` te gebruiken.")
+    
 # YouTube URL
 youtube_url = st.text_input("YouTube-URL", value="")
 
@@ -261,11 +258,12 @@ uploaded_template = st.file_uploader(
 
 if st.button("🚀 Genereer H5P-quiz"):
     if not api_key:
-        st.error("Vul eerst je OpenAI API-sleutel in.")
+        st.error("Vul eerst je OpenAI API-sleutel in, of stel deze in via Streamlit secrets.")
     elif not youtube_url.strip():
         st.error("Vul een geldige YouTube-URL in.")
     else:
         try:
+            # Client aanmaken (gebruikt cache)
             client = get_openai_client(api_key)
 
             # De tijdelijke map is nog steeds nodig voor het opslaan van de H5P output
@@ -274,15 +272,12 @@ if st.button("🚀 Genereer H5P-quiz"):
 
                 with st.status("Bezig met verwerken...", expanded=True) as status:
                     
-                    # 1️⃣ Vroeger: Downloaden van audio. NU: Transcriptie via API.
-                             # OUDE AANROEP: full_text = get_transcript_from_youtube(youtube_url)
-
-                    # NIEUWE AANROEP (in het st.status blok):
-                    status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o...")
+                    # 1️⃣ Inhoud analyseren via GPT-4o-mini
+                    status.write("1️⃣ Inhoud analyseren via OpenAI GPT-4o-mini...")
                     full_text = get_transcript_from_youtube(youtube_url, client)
                     status.write(f"✅ Transcript/Inhoud klaar (lengte: {len(full_text)} tekens)")
 
-                    # 2️⃣ Vroeger: Transcriberen. NU: Direct Vragen Genereren (Stap 2/3 gecombineerd)
+                    # 2️⃣ Vragen Genereren
                     status.write(
                         f"2️⃣ {aantal_vragen} meerkeuzevragen genereren in het {taal_vragen}..."
                     )
@@ -296,6 +291,7 @@ if st.button("🚀 Genereer H5P-quiz"):
                         raise RuntimeError("Geen vragen teruggekregen van het model.")
                     status.write(f"✅ {len(mc_questions)} vragen ontvangen.")
 
+                    # 3️⃣ H5P opbouwen
                     status.write("3️⃣ H5P-bestand opbouwen...")
 
                     # Template opslaan (als upload) of standaardbestand gebruiken
